@@ -1,0 +1,34 @@
+apiVersion: eks.aws.crossplane.io/v1alpha1
+kind: Cluster
+metadata:
+  name: my-eks-cluster
+spec:
+  forProvider:
+    region: us-west-2
+    version: "1.21"
+    vpcConfig:
+      subnetIds:
+        - subnet-xxxxxxxx
+        - subnet-yyyyyyyy
+    roleArn: arn:aws:iam::123456789012:role/MyEKSClusterRole  # Role for EKS
+    logging:
+      clusterLogging:
+        enableTypes:
+          - api
+          - audit
+          - authenticator
+  writeConnectionSecretToRef:
+    name: my-eks-cluster-secret
+---
+apiVersion: eks.aws.crossplane.io/v1alpha1
+kind: NodeGroup
+metadata:
+  name: karpenter-nodegroup
+spec:
+  clusterSelector:
+    matchControllerRef: true
+  nodeRoleArn: arn:aws:iam::123456789012:role/MyKarpenterNodeRole  # Role for Karpenter
+  scalingConfig:
+    desiredSize: 1
+    minSize: 1
+    maxSize: 5
