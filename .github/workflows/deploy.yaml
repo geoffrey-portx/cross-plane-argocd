@@ -1,0 +1,108 @@
+name: Deploy Crossplane Resources
+
+on:
+  pull_request:
+    branches:
+      - feature/*
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v1
+
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2
+
+      - name: Package Helm Chart (Dev)
+        run: |
+          helm package crossplane-helm-chart --values crossplane-helm-chart/values-dev.yaml
+          helm push crossplane-aws-resources-0.1.0.tgz oci://ghcr.io/my-org/crossplane-helm-charts
+
+  deploy-dev:
+    runs-on: ubuntu-latest
+    needs: setup
+    environment: dev
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Deploy to ArgoCD (Dev)
+        run: |
+          kubectl apply -f argocd-application.yaml
+          kubectl -n argocd rollout restart deployment argocd-server
+
+  quality-gate-qa:
+    runs-on: ubuntu-latest
+    needs: deploy-dev
+    environment: qa
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Package Helm Chart (QA)
+        run: |
+          helm package crossplane-helm-chart --values crossplane-helm-chart/values-qa.yaml
+          helm push crossplane-aws-resources-0.1.0.tgz oci://ghcr.io/my-org/crossplane-helm-charts
+
+      - name: Quality Gate for QA Deployment
+        run: |
+          kubectl apply -f argocd-application.yaml
+          kubectl -n argocd rollout restart deployment argocd-server
+        continue-on-error: false
+
+  deploy-qa:
+    runs-on: ubuntu-latest
+    needs: quality-gate-qa
+    environment: qa
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Deploy to ArgoCD (QA)
+        run: |
+          kubectl apply -f argocd-application.yaml
+          kubectl -n argocd rollout restart deployment argocd-server
+
+  quality-gate-prod:
+    runs-on: ubuntu-latest
+    needs: deploy-qa
+    environment: production
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Package Helm Chart (Prod)
+        run: |
+          helm package crossplane-helm-chart --values crossplane-helm-chart/values-prod.yaml
+          helm push crossplane-aws-resources-0.1.0.tgz oci://ghcr.io/my-org/crossplane-helm-charts
+
+      - name: Quality Gate for Production Deployment
+        run: |
+          kubectl apply -f argocd-application.yaml
+          kubectl -n argocd rollout restart deployment argocd-server
+        continue-on-error: false
+
+  deploy-prod:
+    runs-on: ubuntu-latest
+    needs: quality-gate-prod
+    environment: production
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Deploy to ArgoCD (Production)
+        run: |
+          kubectl apply -f argocd-application.yaml
+          kubectl -n argocd rollout restart deployment argocd-server

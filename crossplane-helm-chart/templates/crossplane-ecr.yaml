@@ -1,0 +1,9 @@
+apiVersion: ecr.aws.crossplane.io/v1alpha1
+kind: Repository
+metadata:
+  name: {{ .Values.ecr.repositoryName }}
+spec:
+  forProvider:
+    region: {{ .Values.region }}
+  writeConnectionSecretToRef:
+    name: {{ .Values.ecr.repositorySecretName }}

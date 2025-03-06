@@ -1,0 +1,21 @@
+apiVersion: eks.aws.crossplane.io/v1alpha1
+kind: Cluster
+metadata:
+  name: {{ .Values.eksClusterName }}
+spec:
+  forProvider:
+    region: {{ .Values.region }}
+    version: "{{ .Values.eksVersion }}"
+    vpcConfig:
+      subnetIds:
+        - {{ .Values.vpc.subnetIds[0] }}
+        - {{ .Values.vpc.subnetIds[1] }}
+    roleArn: {{ .Values.eksRoleArn }}
+    logging:
+      clusterLogging:
+        enableTypes:
+          - api
+          - audit
+          - authenticator
+  writeConnectionSecretToRef:
+    name: {{ .Values.eksClusterSecretName }}

@@ -1,0 +1,32 @@
+eksClusterName: my-eks-cluster-dev
+region: us-west-2
+eksVersion: "1.21"
+eksRoleArn: arn:aws:iam::123456789012:role/MyEKSClusterRole-dev
+eksClusterSecretName: my-eks-cluster-secret-dev
+
+s3:
+  bucketName: my-s3-bucket-dev
+  bucketSecretName: my-s3-bucket-secret-dev
+
+ecr:
+  repositoryName: my-ecr-repository-dev
+  repositorySecretName: my-ecr-repository-secret-dev
+
+cloudwatch:
+  logGroupName: my-log-group-dev
+  logStreamName: my-log-stream-dev
+  retentionInDays: 7
+  logGroupSecretName: my-log-group-secret-dev
+  logStreamSecretName: my-log-stream-secret-dev
+
+vpc:
+  vpcName: my-vpc-dev
+  cidrBlock: "10.0.0.0/16"
+  vpcSecretName: my-vpc-secret-dev
+  endpointServiceName: com.amazonaws.us-west-2.s3
+  endpointName: my-s3-vpc-endpoint-dev
+  routeTableId: rtb-xxxxxxxx
+  subnetIds:
+    - subnet-xxxxxxxx
+    - subnet-yyyyyyyy
+  endpointSecretName: my-vpc-endpoint-secret-dev

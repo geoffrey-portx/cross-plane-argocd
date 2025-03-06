@@ -1,0 +1,21 @@
+apiVersion: cloudwatch.aws.crossplane.io/v1alpha1
+kind: LogGroup
+metadata:
+  name: {{ .Values.cloudwatch.logGroupName }}
+spec:
+  forProvider:
+    logGroupName: {{ .Values.cloudwatch.logGroupName }}
+    retentionInDays: {{ .Values.cloudwatch.retentionInDays }}
+  writeConnectionSecretToRef:
+    name: {{ .Values.cloudwatch.logGroupSecretName }}
+---
+apiVersion: cloudwatch.aws.crossplane.io/v1alpha1
+kind: LogStream
+metadata:
+  name: {{ .Values.cloudwatch.logStreamName }}
+spec:
+  forProvider:
+    logGroupName: {{ .Values.cloudwatch.logGroupName }}
+    logStreamName: {{ .Values.cloudwatch.logStreamName }}
+  writeConnectionSecretToRef:
+    name: {{ .Values.cloudwatch.logStreamSecretName }}
