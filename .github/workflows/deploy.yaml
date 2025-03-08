@@ -1,108 +1,188 @@
-name: Deploy Crossplane Resources
+name: Deploy Infrastructure with Crossplane, ArgoCD, and SonarQube
 
 on:
   pull_request:
     branches:
-      - feature/*
+      - main
+    paths:
+      - 'feature/*'
+
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*.*.*'  # Trigger on release tag pushes
 
 jobs:
-  setup:
+  # Deploy feature branch to feature environment when PR is created/updated
+  deploy-feature:
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'feature/')
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Set up Helm
-        uses: azure/setup-helm@v1
-
-      - name: Set up AWS CLI
+      - name: Set up AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Package Helm Chart (Dev)
+      - name: Set up Helm
+        uses: helm/actions@v2
+        with:
+          version: v3
+
+      - name: Package Helm Chart
         run: |
-          helm package crossplane-helm-chart --values crossplane-helm-chart/values-dev.yaml
-          helm push crossplane-aws-resources-0.1.0.tgz oci://ghcr.io/my-org/crossplane-helm-charts
+          helm package ./crossplane-helm-chart --destination ./build
 
-  deploy-dev:
+      - name: Upload Helm Chart to GHCR
+        run: |
+          helm push ./build/*.tgz ghcr.io/${{ github.repository_owner }}/crossplane-helm-repo
+
+      - name: Deploy Feature Branch to Feature Environment using ArgoCD (Apps of Apps)
+        run: |
+          git clone https://github.com/${{ github.repository_owner }}/argocd-apps-of-apps.git
+          cp ./argocd-applications/argocd-feature-application.yaml ./argocd-apps-of-apps/features/${{ github.head_ref }}-application.yaml
+          cd argocd-apps-of-apps
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Deploy feature branch to feature environment for PR #${{ github.event.pull_request.number }} (${{ github.head_ref }})"
+          git push origin main
+
+  # Cleanup feature branch deployment after PR merge to main
+  cleanup-feature:
     runs-on: ubuntu-latest
-    needs: setup
-    environment: dev
+    needs: deploy-feature
+    if: github.event.pull_request.merged == true
     steps:
-      - name: Checkout Code
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Delete Feature Branch Deployment from ArgoCD Apps of Apps
+        run: |
+          git clone https://github.com/${{ github.repository_owner }}/argocd-apps-of-apps.git
+          cd argocd-apps-of-apps
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git rm -f features/${{ github.head_ref }}-application.yaml
+          git commit -m "Remove feature environment for PR #${{ github.event.pull_request.number }} (${{ github.head_ref }}) after merge"
+          git push origin main
+
+  # Quality Gate & Deploy to Dev, QA, Prod on Release
+  deploy-release:
+    runs-on: ubuntu-latest
+    needs: cleanup-feature
+    if: startsWith(github.ref, 'refs/tags/v')  # Trigger only on release tag creation
+    steps:
+      - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Deploy to ArgoCD (Dev)
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Set up Helm
+        uses: helm/actions@v2
+        with:
+          version: v3
+
+      - name: Package Helm Chart
         run: |
-          kubectl apply -f argocd-application.yaml
-          kubectl -n argocd rollout restart deployment argocd-server
+          helm package ./crossplane-helm-chart --destination ./build
 
-  quality-gate-qa:
-    runs-on: ubuntu-latest
-    needs: deploy-dev
-    environment: qa
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
-
-      - name: Package Helm Chart (QA)
+      - name: Upload Helm Chart to GHCR
         run: |
-          helm package crossplane-helm-chart --values crossplane-helm-chart/values-qa.yaml
-          helm push crossplane-aws-resources-0.1.0.tgz oci://ghcr.io/my-org/crossplane-helm-charts
+          helm push ./build/*.tgz ghcr.io/${{ github.repository_owner }}/crossplane-helm-repo
 
-      - name: Quality Gate for QA Deployment
+      - name: SonarQube Scan
+        uses: sonarsource/sonarcloud-github-action@v1
+        with:
+          sonar-token: ${{ secrets.SONARQUBE_TOKEN }}
+          projectKey: ${{ secrets.SONARQUBE_PROJECT_KEY }}
+          organization: ${{ secrets.SONARQUBE_ORG }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Quality Gate Check for Dev Deployment
+      - name: Quality Gate Check for Dev Deployment
+        uses: sonarsource/sonarcloud-github-action@v1
+        with:
+          sonar-token: ${{ secrets.SONARQUBE_TOKEN }}
         run: |
-          kubectl apply -f argocd-application.yaml
-          kubectl -n argocd rollout restart deployment argocd-server
-        continue-on-error: false
+          curl -u ${{ secrets.SONARQUBE_TOKEN }} https://sonarcloud.io/api/qualitygates/project_status?projectKey=${{ secrets.SONARQUBE_PROJECT_KEY }} | jq '.projectStatus.status' > result.json
+          QUALITY_GATE=$(cat result.json | jq -r .status)
+          if [ "$QUALITY_GATE" != "OK" ]; then
+            echo "Quality gate failed, aborting deployment."
+            exit 1
+          fi
 
-  deploy-qa:
-    runs-on: ubuntu-latest
-    needs: quality-gate-qa
-    environment: qa
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
-
-      - name: Deploy to ArgoCD (QA)
+      # Deploy to Dev using ArgoCD
+      - name: Deploy to Dev using ArgoCD (Apps of Apps)
         run: |
-          kubectl apply -f argocd-application.yaml
-          kubectl -n argocd rollout restart deployment argocd-server
+          git clone https://github.com/${{ github.repository_owner }}/argocd-apps-of-apps.git
+          cp ./argocd-applications/argocd-dev-application.yaml ./argocd-apps-of-apps/dev/${{ github.ref_name }}-application.yaml
+          cd argocd-apps-of-apps
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Deploy release ${GITHUB_REF} to dev environment"
+          git push origin main
 
-  quality-gate-prod:
-    runs-on: ubuntu-latest
-    needs: deploy-qa
-    environment: production
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
-
-      - name: Package Helm Chart (Prod)
+      # Quality Gate Check for QA Deployment
+      - name: Quality Gate Check for QA Deployment
+        uses: sonarsource/sonarcloud-github-action@v1
+        with:
+          sonar-token: ${{ secrets.SONARQUBE_TOKEN }}
         run: |
-          helm package crossplane-helm-chart --values crossplane-helm-chart/values-prod.yaml
-          helm push crossplane-aws-resources-0.1.0.tgz oci://ghcr.io/my-org/crossplane-helm-charts
+          curl -u ${{ secrets.SONARQUBE_TOKEN }} https://sonarcloud.io/api/qualitygates/project_status?projectKey=${{ secrets.SONARQUBE_PROJECT_KEY }} | jq '.projectStatus.status' > result.json
+          QUALITY_GATE=$(cat result.json | jq -r .status)
+          if [ "$QUALITY_GATE" != "OK" ]; then
+            echo "Quality gate failed, aborting deployment."
+            exit 1
+          fi
 
-      - name: Quality Gate for Production Deployment
+      # Deploy to QA using ArgoCD (Apps of Apps)
+      - name: Deploy to QA using ArgoCD (Apps of Apps)
         run: |
-          kubectl apply -f argocd-application.yaml
-          kubectl -n argocd rollout restart deployment argocd-server
-        continue-on-error: false
+          git clone https://github.com/${{ github.repository_owner }}/argocd-apps-of-apps.git
+          cp ./argocd-applications/argocd-qa-application.yaml ./argocd-apps-of-apps/qa/${{ github.ref_name }}-application.yaml
+          cd argocd-apps-of-apps
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Deploy release ${GITHUB_REF} to QA environment"
+          git push origin main
 
-  deploy-prod:
-    runs-on: ubuntu-latest
-    needs: quality-gate-prod
-    environment: production
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
-
-      - name: Deploy to ArgoCD (Production)
+      # Quality Gate Check for Prod Deployment
+      - name: Quality Gate Check for Prod Deployment
+        uses: sonarsource/sonarcloud-github-action@v1
+        with:
+          sonar-token: ${{ secrets.SONARQUBE_TOKEN }}
         run: |
-          kubectl apply -f argocd-application.yaml
-          kubectl -n argocd rollout restart deployment argocd-server
+          curl -u ${{ secrets.SONARQUBE_TOKEN }} https://sonarcloud.io/api/qualitygates/project_status?projectKey=${{ secrets.SONARQUBE_PROJECT_KEY }} | jq '.projectStatus.status' > result.json
+          QUALITY_GATE=$(cat result.json | jq -r .status)
+          if [ "$QUALITY_GATE" != "OK" ]; then
+            echo "Quality gate failed, aborting deployment."
+            exit 1
+          fi
+
+      # Deploy to Prod using ArgoCD (Apps of Apps)
+      - name: Deploy to Prod using ArgoCD (Apps of Apps)
+        run: |
+          git clone https://github.com/${{ github.repository_owner }}/argocd-apps-of-apps.git
+          cp ./argocd-applications/argocd-prod-application.yaml ./argocd-apps-of-apps/prod/${{ github.ref_name }}-application.yaml
+          cd argocd-apps-of-apps
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Deploy release ${GITHUB_REF} to prod environment"
+          git push origin main

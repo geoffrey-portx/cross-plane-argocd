@@ -1,9 +1,13 @@
 apiVersion: v2
-name: crossplane-aws-resources
-description: Crossplane AWS Resources (EKS, S3, ECR, etc.) for Helm
+name: my-helm-chart
+description: A Helm chart for deploying infrastructure and tenant environments
 version: 0.1.0
 dependencies:
-  - name: crossplane
-    version: ">= 1.0.0"
-    repository: "https://charts.crossplane.io/stable"
+  - name: infrastructure
+    version: 0.1.0
+    repository: "file://charts/infrastructure"  # Points to the local path of the infrastructure subchart
+  - name: tenant-acme
+    version: 0.1.0
+    repository: "file://charts/tenant-acme"  # Points to the local path of the tenant-acme subchart
+
   
