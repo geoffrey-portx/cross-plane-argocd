@@ -1,243 +1,185 @@
 #!/bin/bash
 
-# Check if multiple stacks are specified
-stacks=$(pulumi stack ls --json | jq -r '.[] | .name')
+# Set environment value
+ENVIRONMENT_TAG="dev"
 
-if [ -z "$stacks" ]; then
-    echo "No Pulumi stacks found. Please create a stack first."
-    exit 1
-fi
+# Function to find EC2 instances
+find_vpcs() {
+  echo "Finding VPCs with tag 'Environment=${ENVIRONMENT_TAG}'..."
+  aws ec2 describe-vpcs --filters "Name=tag:Environment,Values=${ENVIRONMENT_TAG}" --query 'Vpcs[*].VpcId' --output text
+}
 
-# Loop through each stack
-for stack in $stacks; do
-    echo "Processing stack: $stack"
-    
-    # Set the active stack
-    pulumi stack select "$stack" > /dev/null
-    
-    # Get the Pulumi stack outputs in JSON format
-    stack_output=$(pulumi stack output --json)
+# Function to find VPC endpoints
+find_vpc_endpoints() {
+  echo "Finding VPC Endpoints with tag 'Environment=${ENVIRONMENT_TAG}'..."
+  aws ec2 describe-vpc-endpoints --filters "Name=tag:Environment,Values=${ENVIRONMENT_TAG}" --query 'VpcEndpoints[*].VpcEndpointId' --output text
+}
 
-    # Extract outputs from the Pulumi stack
-    vpc_id=$(echo "$stack_output" | jq -r '.vpcId')
-    vpc_cidr_block=$(echo "$stack_output" | jq -r '.vpcCidrBlock')
-    eks_cluster_name=$(echo "$stack_output" | jq -r '.eksClusterName')
-    eks_vpc_id=$(echo "$stack_output" | jq -r '.eksVpcId')
-    eks_role_arn=$(echo "$stack_output" | jq -r '.eksClusterRoleArn')
-    s3_bucket_name=$(echo "$stack_output" | jq -r '.s3BucketName')
-    s3_region=$(echo "$stack_output" | jq -r '.s3Region')
-    endpoint_service_name=$(echo "$stack_output" | jq -r '.endpointServiceName')
-    endpoint_vpc_id=$(echo "$stack_output" | jq -r '.endpointVpcId')
-    cloudwatch_log_group_name=$(echo "$stack_output" | jq -r '.cloudwatchLogGroupName')
-    sqs_queue_name=$(echo "$stack_output" | jq -r '.sqsQueueName')
-    karpenter_version=$(echo "$stack_output" | jq -r '.karpenterVersion')
+# Function to find EKS clusters
+find_eks_clusters() {
+  echo "Finding EKS clusters with tag 'Environment=${ENVIRONMENT_TAG}'..."
+  aws eks list-clusters --query 'clusters' --output text
+}
 
-    # Create folder for the current stack
-    stack_folder="$stack"
-    mkdir -p "$stack_folder/templates"
-    echo "Created folder: $stack_folder"
+# Function to find S3 buckets
+find_s3_buckets() {
+  echo "Finding S3 buckets with tag 'Environment=${ENVIRONMENT_TAG}'..."
+  aws s3api list-buckets --query "Buckets[?contains(Name, '${ENVIRONMENT_TAG}')].Name" --output text
+}
 
-    # Define the AWS Provider configuration for Crossplane
-    provider_config="apiVersion: aws.crossplane.io/v1alpha1
-kind: ProviderConfig
-metadata:
-  name: my-aws-provider
-spec:
-  credentialsSecretRef:
-    name: my-aws-creds
-    namespace: crossplane-system
-    key: credentials.json  # Replace with your actual credentials secret
-  region: us-east-1  # Default AWS region
-"
+# Function to find CloudWatch log groups
+find_cloudwatch_log_groups() {
+  echo "Finding CloudWatch log groups with tag 'Environment=${ENVIRONMENT_TAG}'..."
+  aws logs describe-log-groups --query 'logGroups[*].logGroupName' --output text
+}
 
-    # Write ProviderConfig YAML to file
-    echo "$provider_config" > "$stack_folder/provider-config.yaml"
+# Find resources using AWS CLI
+vpcs=$(find_vpcs)
+vpc_endpoints=$(find_vpc_endpoints)
+eks_clusters=$(find_eks_clusters)
+s3_buckets=$(find_s3_buckets)
+cloudwatch_logs=$(find_cloudwatch_log_groups)
 
-    # Generate and save each resource YAML
+# Print found resources
+echo "Found VPCs: $vpcs"
+echo "Found VPC Endpoints: $vpc_endpoints"
+echo "Found EKS Clusters: $eks_clusters"
+echo "Found S3 Buckets: $s3_buckets"
+echo "Found CloudWatch Logs: $cloudwatch_logs"
 
-    # VPC
-    vpc_yaml="apiVersion: aws.crossplane.io/v1alpha1
+# Function to generate Crossplane YAML for VPCs
+generate_vpc_yaml() {
+  for vpc_id in $1; do
+    cat <<EOL > "${vpc_id}-vpc.yaml"
+apiVersion: ec2.aws.crossplane.io/v1alpha1
 kind: VPC
 metadata:
-  name: my-vpc
+  name: ${vpc_id}
 spec:
-  providerConfigRef:
-    name: my-aws-provider
   forProvider:
-    cidrBlock: $vpc_cidr_block
-    enableDnsHostnames: true
-    enableDnsSupport: true
-    instanceTenancy: default
-    tags:
-      Name: my-vpc
-      Environment: prod
-  writeConnectionSecretToRef:
-    name: my-vpc-secret
-    namespace: crossplane-system
-"
-    echo "$vpc_yaml" > "$stack_folder/templates/vpc.yaml"
+    vpcId: ${vpc_id}
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: ${vpc_id}
+  managementPolicies:
+    - Observe
+EOL
+    echo "Generated YAML for VPC: ${vpc_id}"
+  done
+}
 
-    # EKS
-    eks_yaml="apiVersion: eks.aws.crossplane.io/v1alpha1
-kind: EKSCluster
+# Function to generate Crossplane YAML for VPC endpoints
+generate_vpc_endpoint_yaml() {
+  for vpc_endpoint_id in $1; do
+    cat <<EOL > "${vpc_endpoint_id}-vpc-endpoint.yaml"
+apiVersion: ec2.aws.crossplane.io/v1alpha1
+kind: VpcEndpoint
 metadata:
-  name: $eks_cluster_name
+  name: ${vpc_endpoint_id}
 spec:
-  providerConfigRef:
-    name: my-aws-provider
   forProvider:
-    version: '1.21'
-    roleArn: $eks_role_arn
-    resourcesVpcConfig:
-      subnetIds:
-        - subnet-abc123  # Replace with your actual subnet IDs
-        - subnet-def456
-      securityGroupIds:
-        - sg-123456  # Replace with your actual security group IDs
-      endpointPublicAccess: true
-      endpointPrivateAccess: true
-    desiredSize: 3
-    minSize: 1
-    maxSize: 5
-  writeConnectionSecretToRef:
-    name: $eks_cluster_name-secret
-    namespace: crossplane-system
-"
-    echo "$eks_yaml" > "$stack_folder/templates/eks.yaml"
+    vpcEndpointId: ${vpc_endpoint_id}
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: ${vpc_endpoint_id}
+  managementPolicies:
+    - Observe
+EOL
+    echo "Generated YAML for VPC Endpoint: ${vpc_endpoint_id}"
+  done
+}
 
-    # S3
-    s3_yaml="apiVersion: s3.aws.crossplane.io/v1alpha1
+# Function to generate Crossplane YAML for EKS clusters
+generate_eks_yaml() {
+  for eks_cluster_name in $1; do
+    cat <<EOL > "${eks_cluster_name}-eks.yaml"
+apiVersion: eks.aws.crossplane.io/v1alpha1
+kind: Cluster
+metadata:
+  name: ${eks_cluster_name}
+spec:
+  forProvider:
+    clusterName: ${eks_cluster_name}
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: ${eks_cluster_name}
+  managementPolicies:
+    - Observe
+EOL
+    echo "Generated YAML for EKS Cluster: ${eks_cluster_name}"
+  done
+}
+
+# Function to generate Crossplane YAML for S3 buckets
+generate_s3_yaml() {
+  for bucket_name in $1; do
+    cat <<EOL > "${bucket_name}-s3.yaml"
+apiVersion: s3.aws.crossplane.io/v1alpha1
 kind: Bucket
 metadata:
-  name: $s3_bucket_name
+  name: ${bucket_name}
 spec:
-  providerConfigRef:
-    name: my-aws-provider
   forProvider:
-    acl: private
-    region: $s3_region
-    versioning:
-      enabled: true
-    lifecycleRules:
-      - enabled: true
-        id: 'expire-old-objects'
-        expiration:
-          days: 365
-    tags:
-      Name: $s3_bucket_name
-      Environment: dev
-  writeConnectionSecretToRef:
-    name: $s3_bucket_name-secret
-    namespace: crossplane-system
-"
-    echo "$s3_yaml" > "$stack_folder/templates/s3.yaml"
-
-    # Endpoint
-    endpoint_yaml="apiVersion: vpc.aws.crossplane.io/v1alpha1
-kind: VPCPrivateLink
-metadata:
-  name: my-endpoint-service
-spec:
+    bucketName: ${bucket_name}
   providerConfigRef:
-    name: my-aws-provider
-  forProvider:
-    serviceName: $endpoint_service_name
-    vpcId: $endpoint_vpc_id
-    subnetIds:
-      - subnet-abc123  # Replace with your actual subnet IDs
-    securityGroupIds:
-      - sg-123456  # Replace with your actual security group IDs
-    privateDnsEnabled: true
-    tags:
-      Name: my-endpoint-service
-      Environment: prod
-  writeConnectionSecretToRef:
-    name: my-endpoint-service-secret
-    namespace: crossplane-system
-"
-    echo "$endpoint_yaml" > "$stack_folder/templates/endpoint.yaml"
+    name: aws-provider
+  crossplane.io/external-name: ${bucket_name}
+  managementPolicies:
+    - Observe
+EOL
+    echo "Generated YAML for S3 bucket: ${bucket_name}"
+  done
+}
 
-    # CloudWatch
-    cloudwatch_yaml="apiVersion: logs.aws.crossplane.io/v1alpha1
+# Function to generate Crossplane YAML for CloudWatch log groups
+generate_cloudwatch_yaml() {
+  for log_group_name in $1; do
+    cat <<EOL > "${log_group_name}-cloudwatch.yaml"
+apiVersion: logs.aws.crossplane.io/v1alpha1
 kind: LogGroup
 metadata:
-  name: $cloudwatch_log_group_name
+  name: ${log_group_name}
 spec:
-  providerConfigRef:
-    name: my-aws-provider
   forProvider:
-    logGroupName: $cloudwatch_log_group_name
-    retentionInDays: 30  # Retention period for the logs
-    tags:
-      Name: $cloudwatch_log_group_name
-      Environment: prod
-  writeConnectionSecretToRef:
-    name: $cloudwatch_log_group_name-secret
-    namespace: crossplane-system
-"
-    echo "$cloudwatch_yaml" > "$stack_folder/templates/cloudwatch-log-group.yaml"
-
-    # SQS
-    sqs_yaml="apiVersion: sqs.aws.crossplane.io/v1alpha1
-kind: Queue
-metadata:
-  name: $sqs_queue_name
-spec:
+    logGroupName: ${log_group_name}
   providerConfigRef:
-    name: my-aws-provider
-  forProvider:
-    queueName: $sqs_queue_name
-    delaySeconds: 0  # Default delay for the queue
-    maximumMessageSize: 262144  # Max message size
-    messageRetentionSeconds: 345600  # Retention period
-    tags:
-      Name: $sqs_queue_name
-      Environment: prod
-  writeConnectionSecretToRef:
-    name: $sqs_queue_name-secret
-    namespace: crossplane-system
-"
-    echo "$sqs_yaml" > "$stack_folder/templates/sqs-queue.yaml"
+    name: aws-provider
+  crossplane.io/external-name: ${log_group_name}
+  managementPolicies:
+    - Observe
+EOL
+    echo "Generated YAML for CloudWatch Log Group: ${log_group_name}"
+  done
+}
 
-    # Karpenter
-    karpenter_yaml="apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
-metadata:
-  name: karpenter-provisioner
-spec:
-  provider:
-    aws:
-      capacityTypes: [on-demand]  # Available capacity types (on-demand, spot)
-  requirements:
-    - key: "kubernetes.io/arch"
-      operator: In
-      values: ["amd64"]
-    - key: "kubernetes.io/os"
-      operator: In
-      values: ["linux"]
-  limits:
-    resources:
-      cpu: 1000  # CPU resources limit
-      memory: 1000Gi  # Memory resources limit
-  ttlSecondsAfterEmpty: 30  # TTL for provisioners when idle
-"
-    echo "$karpenter_yaml" > "$stack_folder/templates/karpenter-provisioner.yaml"
+# Generate YAML files for the found resources
+generate_vpc_yaml "$vpcs"
+generate_vpc_endpoint_yaml "$vpc_endpoints"
+generate_eks_yaml "$eks_clusters"
+generate_s3_yaml "$s3_buckets"
+generate_cloudwatch_yaml "$cloudwatch_logs"
 
-    # Create Helm chart structure
-    mkdir -p "$stack_folder/templates"
-    cat <<EOF > "$stack_folder/Chart.yaml"
+# Helm Chart Creation
+
+# Create Helm chart directory structure
+mkdir -p crossplane-helm-chart/templates
+cd crossplane-helm-chart
+
+# Create the Chart.yaml file
+cat <<EOL > Chart.yaml
 apiVersion: v2
-name: $stack
-description: A Crossplane configuration for AWS resources.
+name: crossplane-aws-resources
+description: A Helm chart for deploying AWS resources in Crossplane
 version: 0.1.0
-EOF
+EOL
 
-    cat <<EOF > "$stack_folder/values.yaml"
-# Define values for this stack's configuration
-EOF
+# Move the generated YAMLs into the templates directory
+cp ../*-vpc.yaml ./templates/
+cp ../*-vpc-endpoint.yaml ./templates/
+cp ../*-eks.yaml ./templates/
+cp ../*-s3.yaml ./templates/
+cp ../*-cloudwatch.yaml ./templates/
 
-    echo "Helm chart created in $stack_folder"
-done
-
-echo "All stacks processed and Helm charts created successfully."
-
+# Package the Helm chart
+helm package .
+echo "Helm chart created: crossplane-aws-resources-0.1.0.tgz"
