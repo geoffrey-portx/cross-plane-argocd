@@ -40,10 +40,38 @@ jobs:
         run: |
           helm push ./build/*.tgz ghcr.io/${{ github.repository_owner }}/crossplane-helm-repo
 
-      - name: Deploy Feature Branch to Feature Environment using ArgoCD (Apps of Apps)
+      - name: Create ArgoCD Application for Feature Branch
+        run: |
+          mkdir -p ./argocd-applications/features
+          cat <<EOL > ./argocd-applications/features/${{ github.head_ref }}-application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${GITHUB_HEAD_REF}-feature-application
+spec:
+  destination:
+    name: ''
+    namespace: default
+    server: 'https://kubernetes.default.svc'
+  source:
+    path: ./crossplane-helm-chart
+    repoURL: 'https://github.com/${{ github.repository }}'
+    targetRevision: HEAD
+    helm:
+      valueFiles:
+        - values.yaml
+      releaseName: ${GITHUB_HEAD_REF}
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+EOL
+
+      - name: Push ArgoCD Application for Feature Branch to Git
         run: |
           git clone https://github.com/${{ github.repository_owner }}/argocd-apps-of-apps.git
-          cp ./argocd-applications/argocd-feature-application.yaml ./argocd-apps-of-apps/features/${{ github.head_ref }}-application.yaml
+          cp ./argocd-applications/features/${{ github.head_ref }}-application.yaml ./argocd-apps-of-apps/features/
           cd argocd-apps-of-apps
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -126,10 +154,38 @@ jobs:
           fi
 
       # Deploy to Dev using ArgoCD
-      - name: Deploy to Dev using ArgoCD (Apps of Apps)
+      - name: Create ArgoCD Application for Dev Deployment
+        run: |
+          mkdir -p ./argocd-applications/dev
+          cat <<EOL > ./argocd-applications/dev/${{ github.ref_name }}-application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${GITHUB_REF_NAME}-dev-application
+spec:
+  destination:
+    name: ''
+    namespace: default
+    server: 'https://kubernetes.default.svc'
+  source:
+    path: ./crossplane-helm-chart
+    repoURL: 'https://github.com/${{ github.repository }}'
+    targetRevision: HEAD
+    helm:
+      valueFiles:
+        - values.yaml
+      releaseName: ${GITHUB_REF_NAME}
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+EOL
+
+      - name: Push ArgoCD Application for Dev Deployment to Git
         run: |
           git clone https://github.com/${{ github.repository_owner }}/argocd-apps-of-apps.git
-          cp ./argocd-applications/argocd-dev-application.yaml ./argocd-apps-of-apps/dev/${{ github.ref_name }}-application.yaml
+          cp ./argocd-applications/dev/${{ github.ref_name }}-application.yaml ./argocd-apps-of-apps/dev/
           cd argocd-apps-of-apps
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -150,16 +206,44 @@ jobs:
             exit 1
           fi
 
-      # Deploy to QA using ArgoCD (Apps of Apps)
-      - name: Deploy to QA using ArgoCD (Apps of Apps)
+      # Deploy to QA using ArgoCD
+      - name: Create ArgoCD Application for QA Deployment
+        run: |
+          mkdir -p ./argocd-applications/qa
+          cat <<EOL > ./argocd-applications/qa/${{ github.ref_name }}-application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${GITHUB_REF_NAME}-qa-application
+spec:
+  destination:
+    name: ''
+    namespace: default
+    server: 'https://kubernetes.default.svc'
+  source:
+    path: ./crossplane-helm-chart
+    repoURL: 'https://github.com/${{ github.repository }}'
+    targetRevision: HEAD
+    helm:
+      valueFiles:
+        - values.yaml
+      releaseName: ${GITHUB_REF_NAME}
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+EOL
+
+      - name: Push ArgoCD Application for QA Deployment to Git
         run: |
           git clone https://github.com/${{ github.repository_owner }}/argocd-apps-of-apps.git
-          cp ./argocd-applications/argocd-qa-application.yaml ./argocd-apps-of-apps/qa/${{ github.ref_name }}-application.yaml
+          cp ./argocd-applications/qa/${{ github.ref_name }}-application.yaml ./argocd-apps-of-apps/qa/
           cd argocd-apps-of-apps
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add .
-          git commit -m "Deploy release ${GITHUB_REF} to QA environment"
+          git commit -m "Deploy release ${GITHUB_REF} to qa environment"
           git push origin main
 
       # Quality Gate Check for Prod Deployment
@@ -175,11 +259,39 @@ jobs:
             exit 1
           fi
 
-      # Deploy to Prod using ArgoCD (Apps of Apps)
-      - name: Deploy to Prod using ArgoCD (Apps of Apps)
+      # Deploy to Prod using ArgoCD
+      - name: Create ArgoCD Application for Prod Deployment
+        run: |
+          mkdir -p ./argocd-applications/prod
+          cat <<EOL > ./argocd-applications/prod/${{ github.ref_name }}-application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ${GITHUB_REF_NAME}-prod-application
+spec:
+  destination:
+    name: ''
+    namespace: default
+    server: 'https://kubernetes.default.svc'
+  source:
+    path: ./crossplane-helm-chart
+    repoURL: 'https://github.com/${{ github.repository }}'
+    targetRevision: HEAD
+    helm:
+      valueFiles:
+        - values.yaml
+      releaseName: ${GITHUB_REF_NAME}
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+EOL
+
+      - name: Push ArgoCD Application for Prod Deployment to Git
         run: |
           git clone https://github.com/${{ github.repository_owner }}/argocd-apps-of-apps.git
-          cp ./argocd-applications/argocd-prod-application.yaml ./argocd-apps-of-apps/prod/${{ github.ref_name }}-application.yaml
+          cp ./argocd-applications/prod/${{ github.ref_name }}-application.yaml ./argocd-apps-of-apps/prod/
           cd argocd-apps-of-apps
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
