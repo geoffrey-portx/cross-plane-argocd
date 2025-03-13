@@ -35,7 +35,7 @@ Crossplane will now be Observing the tenants eks cluster but not managing it
 
 Put Crossplane manifests in a github repo and have argocd sync the repo/path
 
-## Determine what resources we want to remove to Pulumi and have Crossplane manage
+## Determine what resources we want to remove from Pulumi and have Crossplane manage
 
 Change the managementPoliy from 'Observer' to [*]
 
