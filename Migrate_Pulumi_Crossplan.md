@@ -50,6 +50,7 @@ Repeat process for QA, Prod etc. for each tenant
 3) A release tag is created the release gets deployed to QA
 4) A quality gets is reviewed the release gets deployed to Prod
 
+## Frontend all application level infrastructure with Backstage and have a UI Backstage UI deploy
 
 
 
