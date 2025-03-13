@@ -21,7 +21,7 @@ spec:
 
 ## Create Crossplane manifests with all parameters
 
-kubectl get <crossplane kind> -o yaml
+kubectl get '<crossplane kind>' -o yaml
 
 ## Deploy Crossplane
 
