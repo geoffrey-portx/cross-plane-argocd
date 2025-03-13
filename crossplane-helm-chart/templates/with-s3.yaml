@@ -1,0 +1,12 @@
+apiVersion: s3.aws.crossplane.io/v1alpha1
+kind: Bucket
+metadata:
+  name: with
+spec:
+  forProvider:
+    bucketName: with
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: with
+  managementPolicies:
+    - Observe

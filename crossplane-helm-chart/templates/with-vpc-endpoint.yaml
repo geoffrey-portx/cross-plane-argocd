@@ -1,0 +1,12 @@
+apiVersion: ec2.aws.crossplane.io/v1alpha1
+kind: VpcEndpoint
+metadata:
+  name: with
+spec:
+  forProvider:
+    vpcEndpointId: with
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: with
+  managementPolicies:
+    - Observe

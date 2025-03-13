@@ -1,0 +1,12 @@
+apiVersion: eks.aws.crossplane.io/v1alpha1
+kind: Cluster
+metadata:
+  name: abrigo-dev-cluster
+spec:
+  forProvider:
+    clusterName: abrigo-dev-cluster
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: abrigo-dev-cluster
+  managementPolicies:
+    - Observe

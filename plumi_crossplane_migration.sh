@@ -157,7 +157,7 @@ generate_vpc_yaml "$vpcs"
 generate_vpc_endpoint_yaml "$vpc_endpoints"
 generate_eks_yaml "$eks_clusters"
 generate_s3_yaml "$s3_buckets"
-generate_cloudwatch_yaml "$cloudwatch_logs"
+#generate_cloudwatch_yaml "$cloudwatch_logs"
 
 # Helm Chart Creation
 
@@ -183,3 +183,4 @@ cp ../*-cloudwatch.yaml ./templates/
 # Package the Helm chart
 helm package .
 echo "Helm chart created: crossplane-aws-resources-0.1.0.tgz"
+rm *.yaml

@@ -1,0 +1,12 @@
+apiVersion: s3.aws.crossplane.io/v1alpha1
+kind: Bucket
+metadata:
+  name: portx-abrigo-dev-tempo
+spec:
+  forProvider:
+    bucketName: portx-abrigo-dev-tempo
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: portx-abrigo-dev-tempo
+  managementPolicies:
+    - Observe

@@ -1,0 +1,12 @@
+apiVersion: eks.aws.crossplane.io/v1alpha1
+kind: Cluster
+metadata:
+  name: with
+spec:
+  forProvider:
+    clusterName: with
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: with
+  managementPolicies:
+    - Observe

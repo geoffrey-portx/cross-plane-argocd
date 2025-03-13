@@ -1,0 +1,12 @@
+apiVersion: logs.aws.crossplane.io/v1alpha1
+kind: LogGroup
+metadata:
+  name: groups
+spec:
+  forProvider:
+    logGroupName: groups
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: groups
+  managementPolicies:
+    - Observe

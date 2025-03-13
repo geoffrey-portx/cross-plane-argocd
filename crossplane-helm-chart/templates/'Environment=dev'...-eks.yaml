@@ -1,0 +1,12 @@
+apiVersion: eks.aws.crossplane.io/v1alpha1
+kind: Cluster
+metadata:
+  name: 'Environment=dev'...
+spec:
+  forProvider:
+    clusterName: 'Environment=dev'...
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: 'Environment=dev'...
+  managementPolicies:
+    - Observe

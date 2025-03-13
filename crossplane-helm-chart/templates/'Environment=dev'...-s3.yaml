@@ -1,0 +1,12 @@
+apiVersion: s3.aws.crossplane.io/v1alpha1
+kind: Bucket
+metadata:
+  name: 'Environment=dev'...
+spec:
+  forProvider:
+    bucketName: 'Environment=dev'...
+  providerConfigRef:
+    name: aws-provider
+  crossplane.io/external-name: 'Environment=dev'...
+  managementPolicies:
+    - Observe
