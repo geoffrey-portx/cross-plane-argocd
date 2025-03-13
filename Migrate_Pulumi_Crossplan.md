@@ -4,6 +4,7 @@ aws resourcegroupstaggingapi get-resources --tag-filters Key=Environmemt,Values=
 
 ## Migrate AWS resources to Crossplane manifests using Observer management policy
 
+'''
 apiVersion: ec2.aws.crossplane.io/v1alpha1
 kind: <Kind type> example VpcEndpoint
 metadata:
@@ -16,6 +17,7 @@ spec:
   crossplane.io/external-name: ${vpc_endpoint_id}
   managementPolicies:
     - Observe
+'''
 
 ## Create Crossplane manifests with all parameters
 
