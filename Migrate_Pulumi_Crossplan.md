@@ -21,7 +21,7 @@ spec:
 
 ## Create Crossplane manifests with all parameters
 
-kubectl get '<crossplane kind>' -o yaml
+kubectl get 'crossplane kind' -o yaml
 
 ## Deploy Crossplane
 
@@ -42,6 +42,13 @@ Change the managementPoliy from 'Observer' to [*]
 ## Repeat process for next tenant environment and also for all tenants
 
 Repeat process for QA, Prod etc. for each tenant
+
+## Create GHA pipeline that performs the following
+
+1) A feature branch pull request is deployed, the feature gets deployed to DEV
+2) The feature gets merged to main the feature deployed to dev is removed
+3) A release tag is created the release gets deployed to QA
+4) A quality gets is reviewed the release gets deployed to Prod
 
 
 
