@@ -1,0 +1,13 @@
+---
+apiVersion: route53.aws.crossplane.io/v1alpha1
+kind: HostedZone
+metadata:
+  name: crossplane.io
+spec:
+  providerConfigRef:
+    name: example
+  forProvider:
+    name: crossplane.io
+    tags:
+      key1: value1
+      key2: value2

@@ -1,0 +1,15 @@
+apiVersion: acm.aws.crossplane.io/v1beta1
+kind: Certificate
+metadata:
+  name: dev.crossplane.io
+spec:
+  forProvider:
+    domainName: dev.crossplane.io
+    region: us-east-1
+    validationMethod: DNS
+    keyAlgorithm: RSA_2048 # default, see https://docs.aws.amazon.com/acm/latest/userguide/acm-certificate.html#algorithms.title
+    tags:
+    - key: Name
+      value: example
+  providerConfigRef:
+    name: example

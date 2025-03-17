@@ -1,0 +1,24 @@
+ignore:
+  resource_names:
+    - AccessKey
+    - AccountAlias
+    - Doc
+    - Group
+    - LoginProfile
+    - OpenIDConnectProvider
+    - Policy
+    - PolicyVersion
+    - Role
+    - SAMLProvider
+    - ServiceSpecificCredential
+    - User
+    - VirtualMFADevice
+  field_paths:
+    - CreateInstanceProfileInput.InstanceProfileName
+    - DeleteInstanceProfileInput.InstanceProfileName
+resources:
+  ServiceLinkedRole:
+    exceptions:
+      errors:
+        404:
+          code: NoSuchEntity
