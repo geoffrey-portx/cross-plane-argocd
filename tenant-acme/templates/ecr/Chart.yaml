@@ -1,6 +1,0 @@
-apiVersion: v2               # Helm 3+ requires apiVersion v2
-name: my-app                # The name of the chart
-description: A Helm chart for Kubernetes to deploy my application
-type: application           # Type can be 'application' or 'library'
-version: 0.1.0              # Chart version (Helm package version)
-appVersion: "1.16.0"        # The version of the app being deployed
